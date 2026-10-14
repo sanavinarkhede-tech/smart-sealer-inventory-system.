@@ -2,1075 +2,1092 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime, date
+from io import StringIO
 
 # =========================================================
 # PAGE CONFIGURATION
 # =========================================================
 st.set_page_config(
-    page_title="Sealer IQ | Industrial Inventory",
+    page_title="Digital Sealer Inventory | Industrial IoT",
     page_icon="🏭",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 # =========================================================
-# INDUSTRIAL IOT THEME
+# INDUSTRIAL THEME
 # =========================================================
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-    }
-
+st.markdown(
+    """
+    <style>
     .stApp {
-        background: #F3F6FA;
+        background-color: #f3f6fa;
+        color: #172b4d;
     }
 
-    [data-testid="stHeader"] {
-        background: rgba(243, 246, 250, 0.95);
+    [data-testid="stSidebar"] {
+        background-color: #10243a;
     }
 
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #10243A 0%, #173B56 100%);
-        border-right: 1px solid #27465D;
+    [data-testid="stSidebar"] * {
+        color: #ffffff;
     }
 
-    section[data-testid="stSidebar"] * {
-        color: #EDF5FC;
-    }
-
-    section[data-testid="stSidebar"] hr {
-        border-color: #34536A;
-    }
-
-    .brand {
-        background: linear-gradient(135deg, #163A54, #087F8C);
-        padding: 22px 20px;
-        border-radius: 16px;
-        color: white;
-        margin-bottom: 18px;
-        box-shadow: 0 8px 24px rgba(8, 127, 140, 0.16);
-    }
-
-    .brand-title {
-        font-size: 26px;
+    .main-title {
+        font-size: 32px;
         font-weight: 800;
-        letter-spacing: 1px;
-        margin: 0;
+        color: #10243a;
+        margin-bottom: 2px;
     }
 
-    .brand-subtitle {
-        font-size: 11px;
-        letter-spacing: 1.6px;
-        color: #CBE8F2;
-        margin-top: 5px;
+    .subtitle {
+        color: #62748a;
+        font-size: 14px;
+        margin-bottom: 22px;
     }
 
-    .section-label {
-        color: #64748B;
-        font-size: 12px;
+    .section-title {
+        font-size: 21px;
         font-weight: 700;
-        letter-spacing: 1.5px;
-        text-transform: uppercase;
-        margin: 8px 0 12px 0;
+        color: #10243a;
+        margin-top: 12px;
+    }
+
+    .status-card {
+        background: white;
+        padding: 16px;
+        border-radius: 12px;
+        border-left: 5px solid #11a8a0;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 8px rgba(16, 36, 58, 0.06);
+    }
+
+    .small-note {
+        color: #62748a;
+        font-size: 12px;
     }
 
     div[data-testid="stMetric"] {
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 14px;
-        padding: 17px 18px;
-        box-shadow: 0 4px 16px rgba(15, 35, 55, 0.035);
-    }
-
-    div[data-testid="stMetricLabel"] {
-        color: #64748B;
-        font-size: 13px;
-        font-weight: 600;
-    }
-
-    div[data-testid="stMetricValue"] {
-        color: #173B56;
-        font-size: 28px;
-        font-weight: 800;
-    }
-
-    div[data-testid="stMetricDelta"] {
-        font-size: 12px;
-    }
-
-    div.stButton > button,
-    div.stDownloadButton > button,
-    div[data-testid="stFormSubmitButton"] > button {
-        border-radius: 9px;
-        min-height: 40px;
-        font-weight: 600;
-        border: 1px solid #D5E1EB;
+        background: #ffffff;
+        padding: 15px;
+        border-radius: 12px;
+        border: 1px solid #e3eaf2;
     }
 
     div.stButton > button[kind="primary"] {
-        background: #087F8C;
-        border-color: #087F8C;
-        color: white;
+        background-color: #087f8c;
+        border-color: #087f8c;
     }
-
-    div.stButton > button[kind="primary"]:hover {
-        background: #066A75;
-        border-color: #066A75;
-        color: white;
-    }
-
-    div[data-testid="stDataFrame"] {
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        overflow: hidden;
-    }
-
-    div[data-testid="stPlotlyChart"] {
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 14px;
-        padding: 8px;
-    }
-
-    .status-strip {
-        background: #E4F6F2;
-        color: #087F68;
-        border: 1px solid #B6E8DB;
-        padding: 11px 15px;
-        border-radius: 10px;
-        font-size: 13px;
-        font-weight: 600;
-        margin-bottom: 16px;
-    }
-
-    .info-panel {
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 13px;
-        padding: 16px;
-    }
-
-    .small-muted {
-        color: #64748B;
-        font-size: 12px;
-    }
-
-    #MainMenu, footer {
-        visibility: hidden;
-    }
-</style>
-""", unsafe_allow_html=True)
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # =========================================================
 # INITIAL DEMO DATA
 # =========================================================
-def initialise_state():
+def initialize_data():
     if "drums" not in st.session_state:
-        st.session_state.drums = pd.DataFrame({
-            "Drum ID": [
-                "DR-001", "DR-002", "DR-003", "DR-004", "DR-005"
-            ],
-            "Sealer Type": [
-                "Sealer A", "Sealer A", "Sealer B", "Sealer B", "Sealer C"
-            ],
-            "Capacity (kg)": [200.0] * 5,
-            "Tare Weight (kg)": [10.0] * 5,
-            "Remaining (kg)": [180.0, 150.0, 120.0, 80.0, 40.0],
-            "Location": ["A1", "A2", "B1", "B2", "C1"]
-        })
+        st.session_state.drums = [
+            {
+                "Drum ID": "SD-001",
+                "Sealer Type": "Sealer A",
+                "Capacity (kg)": 200.0,
+                "Remaining (kg)": 145.0,
+                "Location": "Storage Zone A",
+                "Last Updated": datetime.now(),
+            },
+            {
+                "Drum ID": "SD-002",
+                "Sealer Type": "Sealer B",
+                "Capacity (kg)": 200.0,
+                "Remaining (kg)": 42.0,
+                "Location": "Storage Zone A",
+                "Last Updated": datetime.now(),
+            },
+            {
+                "Drum ID": "SD-003",
+                "Sealer Type": "Sealer A",
+                "Capacity (kg)": 180.0,
+                "Remaining (kg)": 110.0,
+                "Location": "Storage Zone B",
+                "Last Updated": datetime.now(),
+            },
+            {
+                "Drum ID": "SD-004",
+                "Sealer Type": "Sealer C",
+                "Capacity (kg)": 150.0,
+                "Remaining (kg)": 18.0,
+                "Location": "Storage Zone B",
+                "Last Updated": datetime.now(),
+            },
+            {
+                "Drum ID": "SD-005",
+                "Sealer Type": "Sealer B",
+                "Capacity (kg)": 200.0,
+                "Remaining (kg)": 175.0,
+                "Location": "Storage Zone C",
+                "Last Updated": datetime.now(),
+            },
+        ]
 
     if "transactions" not in st.session_state:
-        st.session_state.transactions = []
-
-    if "next_id" not in st.session_state:
-        st.session_state.next_id = 6
-
-    if "book_stock" not in st.session_state:
-        st.session_state.book_stock = float(
-            st.session_state.drums["Remaining (kg)"].sum()
-        )
+        st.session_state.transactions = [
+            {
+                "Timestamp": datetime.now(),
+                "Drum ID": "SD-001",
+                "Sealer Type": "Sealer A",
+                "Quantity Used (kg)": 10.0,
+                "Shift": "A",
+                "Notes": "Demo consumption record",
+            }
+        ]
 
     if "threshold" not in st.session_state:
-        st.session_state.threshold = 50.0
+        st.session_state.threshold = 20.0
 
-    if "last_sensor_reading" not in st.session_state:
-        st.session_state.last_sensor_reading = {}
+    if "simulated_sap_stock" not in st.session_state:
+        st.session_state.simulated_sap_stock = 750.0
 
-initialise_state()
+    if "next_drum_number" not in st.session_state:
+        st.session_state.next_drum_number = 6
 
+
+initialize_data()
 
 # =========================================================
-# HELPER FUNCTIONS
+# DATA HELPERS
 # =========================================================
 def current_drums():
-    return st.session_state.drums.copy()
+    """Return current inventory as a DataFrame."""
+    columns = [
+        "Drum ID",
+        "Sealer Type",
+        "Capacity (kg)",
+        "Remaining (kg)",
+        "Location",
+        "Last Updated",
+    ]
+
+    return pd.DataFrame(
+        st.session_state.drums,
+        columns=columns,
+    )
 
 
 def stock_status(remaining, threshold):
+    """Determine stock status based on remaining quantity."""
     if remaining <= 0:
         return "Empty"
-    if remaining <= threshold * 0.5:
+    elif remaining <= threshold:
         return "Critical"
-    if remaining <= threshold:
-        return "Low Stock"
-    return "Available"
-
-
-def add_transaction(drum_id, transaction_type, quantity,
-                    physical_after, shift="General", note=""):
-    st.session_state.transactions.append({
-        "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "Date": date.today().isoformat(),
-        "Shift": shift,
-        "Drum ID": drum_id,
-        "Transaction": transaction_type,
-        "Quantity (kg)": round(float(quantity), 2),
-        "Physical Stock After (kg)": round(float(physical_after), 2),
-        "Notes": note
-    })
-
-
-def make_csv(dataframe):
-    return dataframe.to_csv(index=False).encode("utf-8-sig")
-
-
-def styled_chart(fig, height=320):
-    fig.update_layout(
-        height=height,
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        font=dict(family="Inter", color="#334155", size=12),
-        margin=dict(l=15, r=15, t=45, b=15),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
-        xaxis=dict(showgrid=False, linecolor="#E2E8F0"),
-        yaxis=dict(gridcolor="#E8EEF4", zeroline=False),
-    )
-    return fig
+    elif remaining <= threshold * 2:
+        return "Low"
+    return "Healthy"
 
 
 def get_stock_report():
+    """Create a stock report and safely handle zero-capacity drums."""
     report = current_drums()
+
     report["Status"] = report["Remaining (kg)"].apply(
-        lambda value: stock_status(value, st.session_state.threshold)
+        lambda value: stock_status(
+            value, st.session_state.threshold
+        )
     )
+
     report["Stock Level (%)"] = (
         report["Remaining (kg)"]
-        .div(report["Capacity (kg)"].replace(0, pd.NA))
+        .div(
+            report["Capacity (kg)"].where(
+                report["Capacity (kg)"] > 0
+            )
+        )
         .mul(100)
         .fillna(0)
         .round(1)
     )
+
     return report
 
 
+def record_transaction(
+    drum_id,
+    quantity,
+    shift,
+    notes,
+):
+    """Record consumption and update the selected drum."""
+    if quantity <= 0:
+        st.error("Consumption quantity must be greater than zero.")
+        return False
+
+    for drum in st.session_state.drums:
+        if drum["Drum ID"] == drum_id:
+            if quantity > drum["Remaining (kg)"]:
+                st.error(
+                    "Consumption cannot exceed the drum's remaining stock."
+                )
+                return False
+
+            drum["Remaining (kg)"] = round(
+                drum["Remaining (kg)"] - quantity, 2
+            )
+            drum["Last Updated"] = datetime.now()
+
+            st.session_state.transactions.append(
+                {
+                    "Timestamp": datetime.now(),
+                    "Drum ID": drum["Drum ID"],
+                    "Sealer Type": drum["Sealer Type"],
+                    "Quantity Used (kg)": float(quantity),
+                    "Shift": shift,
+                    "Notes": notes,
+                }
+            )
+            return True
+
+    st.error("Selected drum was not found.")
+    return False
+
+
+def transactions_df():
+    """Return transaction history as a DataFrame."""
+    columns = [
+        "Timestamp",
+        "Drum ID",
+        "Sealer Type",
+        "Quantity Used (kg)",
+        "Shift",
+        "Notes",
+    ]
+    return pd.DataFrame(
+        st.session_state.transactions,
+        columns=columns,
+    )
+
+
+def csv_download(df, filename, button_label):
+    """Display a CSV download button."""
+    csv_data = df.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label=button_label,
+        data=csv_data,
+        file_name=filename,
+        mime="text/csv",
+        use_container_width=False,
+    )
+
+
+def section_heading(title, subtitle=None):
+    st.markdown(
+        f'<div class="section-title">{title}</div>',
+        unsafe_allow_html=True,
+    )
+    if subtitle:
+        st.caption(subtitle)
+
+
 # =========================================================
-# SIDEBAR
+# SIDEBAR NAVIGATION
 # =========================================================
 with st.sidebar:
-    st.markdown("""
-    <div style="padding: 8px 0 20px 0;">
-        <div style="font-size: 34px;">🏭</div>
-        <div style="font-size: 23px; font-weight: 800; letter-spacing: 1px;">
-            SEALER IQ
-        </div>
-        <div style="font-size: 10px; letter-spacing: 1.8px; color: #A9D5E3;">
-            INDUSTRIAL INVENTORY CONTROL
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("# 🏭 Sealer Monitor")
+    st.caption("INDUSTRIAL IoT INVENTORY")
+    st.divider()
 
-    st.markdown("---")
-    st.caption("WORKSPACE")
     page = st.radio(
-        "Navigation",
+        "NAVIGATION",
         [
             "Overview",
             "Drum Inventory",
             "Consumption",
             "Transactions",
-            "Reports"
+            "Reports",
         ],
-        label_visibility="collapsed"
+    )
+
+    st.divider()
+
+    st.markdown("### ⚙️ Monitoring Settings")
+
+    st.session_state.threshold = st.number_input(
+        "Critical stock threshold (kg)",
+        min_value=0.0,
+        max_value=500.0,
+        value=float(st.session_state.threshold),
+        step=5.0,
     )
 
     st.markdown("---")
-    st.caption("MONITORING SETTINGS")
-
-    st.session_state.threshold = st.slider(
-        "Low-stock alert threshold (kg)",
-        min_value=10,
-        max_value=100,
-        value=int(st.session_state.threshold),
-        step=5
-    )
-
-    st.markdown("---")
-    st.markdown(
-        "<div style='background:#183F56; padding:13px; "
-        "border-radius:10px;'>"
-        "<div style='font-size:11px;color:#A9D5E3;'>SYSTEM MODE</div>"
-        "<div style='font-weight:700;color:#FFFFFF;'>● SIMULATION</div>"
-        "<div style='font-size:11px;color:#B8D0DE;margin-top:5px;'>"
-        "No live sensor or SAP connection</div></div>",
-        unsafe_allow_html=True
-    )
-
-    st.write("")
-    st.caption("SEALER IQ • Prototype v2.0")
+    st.markdown("**System status:** 🟢 Online")
+    st.caption("Demo mode · Simulated sensor data")
 
 # =========================================================
-# TOP HEADER
+# HEADER
 # =========================================================
-st.markdown("""
-<div class="brand">
-    <div class="brand-title">DIGITAL SEALER MONITORING</div>
-    <div class="brand-subtitle">
-        BODY SHOP / AUTOMOTIVE MANUFACTURING / INVENTORY INTELLIGENCE
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
 st.markdown(
-    f'<div class="status-strip">● SYSTEM READY &nbsp; | &nbsp; '
-    f'SIMULATION MODE &nbsp; | &nbsp; '
-    f'LAST PAGE REFRESH: {datetime.now().strftime("%d %b %Y, %H:%M:%S")}'
-    f'</div>',
-    unsafe_allow_html=True
+    '<div class="main-title">Digital Sealer Inventory Monitoring</div>',
+    unsafe_allow_html=True,
 )
+st.markdown(
+    '<div class="subtitle">'
+    'Automotive Body Shop | Drum stock, consumption and inventory visibility'
+    '</div>',
+    unsafe_allow_html=True,
+)
+
+report = get_stock_report()
+tx_df = transactions_df()
+
+total_capacity = float(report["Capacity (kg)"].sum())
+total_remaining = float(report["Remaining (kg)"].sum())
+total_used = float(tx_df["Quantity Used (kg)"].sum()) if not tx_df.empty else 0.0
+drum_count = len(report)
+
+critical_count = int(
+    report["Status"].isin(["Critical", "Empty"]).sum()
+)
+low_count = int((report["Status"] == "Low").sum())
 
 # =========================================================
 # OVERVIEW DASHBOARD
 # =========================================================
 if page == "Overview":
-    drums = current_drums()
-    report = get_stock_report()
+    st.subheader("📊 Operations Dashboard")
 
-    physical_stock = float(drums["Remaining (kg)"].sum())
-    capacity = float(drums["Capacity (kg)"].sum())
-    active = int((drums["Remaining (kg)"] > 0).sum())
-    low_count = int(
-        (drums["Remaining (kg)"] <= st.session_state.threshold).sum()
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric(
+        "Total Drums",
+        drum_count,
+        help="Number of drums registered in the inventory.",
     )
-    utilization = physical_stock / capacity * 100 if capacity else 0
+    col2.metric(
+        "Available Stock",
+        f"{total_remaining:,.1f} kg",
+    )
+    col3.metric(
+        "Consumption Recorded",
+        f"{total_used:,.1f} kg",
+    )
+    col4.metric(
+        "Critical / Empty",
+        critical_count,
+        delta=f"{low_count} low stock",
+        delta_color="inverse",
+    )
 
-    st.markdown('<div class="section-label">Live Overview</div>',
-                unsafe_allow_html=True)
+    st.divider()
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Physical Sealer Stock", f"{physical_stock:,.1f} kg")
-    c2.metric("Storage Capacity", f"{capacity:,.0f} kg")
-    c3.metric("Active Drums", f"{active} / {len(drums)}")
-    c4.metric("Low-Stock Alerts", str(low_count))
-
-    left, right = st.columns([1.45, 1])
+    left, right = st.columns([1.5, 1])
 
     with left:
-        st.subheader("📊 Inventory Levels")
-        fig = go.Figure()
+        section_heading("📦 Stock by Drum")
 
-        colors = [
-            "#DC5353" if value <= st.session_state.threshold * 0.5
-            else "#E8A23A" if value <= st.session_state.threshold
-            else "#0B9B8A"
-            for value in drums["Remaining (kg)"]
-        ]
-
-        fig.add_trace(go.Bar(
-            x=drums["Drum ID"],
-            y=drums["Remaining (kg)"],
-            marker_color=colors,
-            text=[f"{v:.0f} kg" for v in drums["Remaining (kg)"]],
-            textposition="outside",
-            name="Remaining stock"
-        ))
-
-        fig.update_layout(
-            title="Remaining Material per Drum",
-            yaxis_title="Quantity (kg)",
-            showlegend=False,
-            yaxis_range=[0, max(220, float(drums["Capacity (kg)"].max()) + 25)]
-        )
-        st.plotly_chart(styled_chart(fig, 350), use_container_width=True)
+        if not report.empty:
+            stock_chart = px.bar(
+                report,
+                x="Drum ID",
+                y="Remaining (kg)",
+                color="Sealer Type",
+                hover_data=[
+                    "Capacity (kg)",
+                    "Location",
+                    "Status",
+                ],
+                title="Remaining Sealer Material",
+                template="plotly_white",
+            )
+            stock_chart.update_layout(
+                margin=dict(l=10, r=10, t=50, b=10),
+                legend_title_text="Sealer Type",
+            )
+            st.plotly_chart(
+                stock_chart,
+                use_container_width=True,
+            )
+        else:
+            st.info("Add drums to see the stock chart.")
 
     with right:
-        st.subheader("🏭 Storage Utilization")
+        section_heading("🧪 Stock Distribution")
 
-        fig = go.Figure(go.Pie(
-            labels=["Used stock", "Available capacity"],
-            values=[physical_stock, max(capacity - physical_stock, 0)],
-            hole=0.72,
-            marker_colors=["#087F8C", "#E7EDF3"],
-            textinfo="percent",
-            sort=False
-        ))
-
-        fig.add_annotation(
-            text=f"<b>{utilization:.1f}%</b><br><span style='font-size:11px'>utilized</span>",
-            x=0.5, y=0.5, showarrow=False,
-            font=dict(size=22, color="#173B56")
-        )
-
-        fig.update_layout(
-            title="Total Capacity Usage",
-            showlegend=True
-        )
-        st.plotly_chart(styled_chart(fig, 350), use_container_width=True)
-
-    st.subheader("📍 Drum Storage Map")
-
-    cols = st.columns(5)
-    for i, (_, drum) in enumerate(report.iterrows()):
-        remaining = float(drum["Remaining (kg)"])
-        pct = float(drum["Stock Level (%)"])
-        status = drum["Status"]
-
-        if status == "Empty" or status == "Critical":
-            color, bg = "#D64545", "#FCE8E8"
-        elif status == "Low Stock":
-            color, bg = "#C98214", "#FFF3D6"
-        else:
-            color, bg = "#07866F", "#E2F6F0"
-
-        with cols[i % 5]:
-            st.markdown(
-                f"""
-                <div style="background:white;border:1px solid #E1E8EF;
-                    border-radius:13px;padding:14px 12px;
-                    min-height:170px;">
-                    <div style="font-size:11px;color:#64748B;">
-                        LOCATION {drum['Location']}
-                    </div>
-                    <div style="font-size:17px;font-weight:800;
-                        color:#173B56;margin-top:5px;">
-                        {drum['Drum ID']}
-                    </div>
-                    <div style="background:#E9EEF4;height:9px;
-                        border-radius:8px;margin:13px 0;overflow:hidden;">
-                        <div style="width:{max(0,min(100,pct))}%;
-                            background:{color};height:9px;border-radius:8px;">
-                        </div>
-                    </div>
-                    <div style="font-size:19px;font-weight:800;color:#173B56;">
-                        {remaining:.1f} kg
-                    </div>
-                    <div style="font-size:11px;color:#64748B;">
-                        of {drum['Capacity (kg)']:.0f} kg
-                    </div>
-                    <div style="display:inline-block;margin-top:9px;
-                        padding:4px 8px;border-radius:6px;
-                        color:{color};background:{bg};
-                        font-size:10px;font-weight:700;">
-                        {status.upper()}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
+        if total_remaining > 0:
+            type_stock = (
+                report.groupby("Sealer Type", as_index=False)
+                ["Remaining (kg)"]
+                .sum()
             )
 
-    st.subheader("⚠️ Reorder Alert Center")
-    alerts = report[
-        report["Remaining (kg)"] <= st.session_state.threshold
-    ]
+            pie_chart = px.pie(
+                type_stock,
+                names="Sealer Type",
+                values="Remaining (kg)",
+                hole=0.48,
+                title="Stock by Sealer Type",
+                template="plotly_white",
+            )
+            pie_chart.update_layout(
+                margin=dict(l=10, r=10, t=50, b=10)
+            )
+            st.plotly_chart(
+                pie_chart,
+                use_container_width=True,
+            )
+        else:
+            st.info("No stock is currently available.")
 
-    if alerts.empty:
-        st.success("All drums are above the configured alert threshold.")
+    section_heading("🏭 Storage Overview")
+
+    if report.empty:
+        st.info("No drums have been registered.")
     else:
-        st.warning(f"{len(alerts)} drum(s) require stock review.")
-        st.dataframe(
-            alerts[[
-                "Drum ID", "Sealer Type", "Location",
-                "Remaining (kg)", "Status"
-            ]],
-            use_container_width=True,
-            hide_index=True
+        card_columns = st.columns(3)
+
+        for index, drum in report.reset_index(drop=True).iterrows():
+            with card_columns[index % 3]:
+                status = drum["Status"]
+
+                if status in ["Critical", "Empty"]:
+                    status_color = "#dc2626"
+                elif status == "Low":
+                    status_color = "#d97706"
+                else:
+                    status_color = "#059669"
+
+                st.markdown(
+                    f"""
+                    <div class="status-card"
+                         style="border-left-color:{status_color}">
+                        <b>{drum['Drum ID']}</b><br>
+                        <span>{drum['Sealer Type']}</span><br><br>
+                        <b>{drum['Remaining (kg)']:.1f} kg</b>
+                        / {drum['Capacity (kg)']:.1f} kg<br>
+                        <span style="color:{status_color};font-weight:700">
+                            {status}
+                        </span><br>
+                        <span class="small-note">{drum['Location']}</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                st.progress(
+                    min(
+                        max(
+                            float(drum["Stock Level (%)"]) / 100,
+                            0.0,
+                        ),
+                        1.0,
+                    )
+                )
+
+    if critical_count > 0 or low_count > 0:
+        st.warning(
+            f"Inventory alert: {critical_count} drum(s) are critical or empty, "
+            f"and {low_count} drum(s) have low stock."
         )
+    else:
+        st.success("All drums are above the low-stock threshold.")
 
-    st.subheader("📚 Physical vs SAP Book Stock")
+    st.divider()
 
-    book_stock = float(st.session_state.book_stock)
-    variance = physical_stock - book_stock
+    section_heading("🔄 Physical vs Simulated System Stock")
+    sap_col1, sap_col2, sap_col3 = st.columns(3)
 
-    a, b, c = st.columns(3)
-    a.metric("Physical Stock", f"{physical_stock:.1f} kg")
-    b.metric("SAP Book Stock (simulated)", f"{book_stock:.1f} kg")
-    b_delta = None
-    c.metric("Stock Variance", f"{variance:+.1f} kg")
+    sap_col1.metric(
+        "Physical Inventory Total",
+        f"{total_remaining:,.1f} kg",
+    )
+    sap_col2.metric(
+        "Simulated SAP Stock",
+        f"{st.session_state.simulated_sap_stock:,.1f} kg",
+    )
+    difference = total_remaining - st.session_state.simulated_sap_stock
+    sap_col3.metric(
+        "Difference",
+        f"{difference:,.1f} kg",
+    )
 
     st.caption(
-        "The SAP figure is a local demo value. It is not connected to a live ERP."
+        "The SAP value is a simulated reference value. "
+        "This demo does not connect to a real SAP system or physical load cells."
     )
+
+    with st.expander("Update simulated SAP stock"):
+        new_sap_stock = st.number_input(
+            "Simulated SAP stock (kg)",
+            min_value=0.0,
+            value=float(st.session_state.simulated_sap_stock),
+            step=10.0,
+            key="sap_stock_input",
+        )
+        if st.button("Update simulated stock"):
+            st.session_state.simulated_sap_stock = new_sap_stock
+            st.success("Simulated stock updated.")
+            st.rerun()
 
 # =========================================================
 # DRUM INVENTORY
 # =========================================================
 elif page == "Drum Inventory":
-    st.markdown('<div class="section-label">Inventory Operations</div>',
-                unsafe_allow_html=True)
-    st.title("🛢️ Drum Inventory")
-    st.caption("View, receive, edit and monitor sealer drums.")
-
-    report = get_stock_report()
-    search = st.text_input(
-        "🔎 Search by drum ID, type or location",
-        placeholder="e.g. DR-001, Sealer A, A1"
+    section_heading(
+        "📋 Drum Inventory",
+        "Register, inspect, update and remove drums.",
     )
 
-    if search.strip():
-        mask = (
-            report["Drum ID"].str.contains(search, case=False, na=False)
-            | report["Sealer Type"].str.contains(search, case=False, na=False)
-            | report["Location"].str.contains(search, case=False, na=False)
+    search_text = st.text_input(
+        "🔍 Search by Drum ID, sealer type or location"
+    )
+
+    inventory = get_stock_report()
+
+    if search_text:
+        search_mask = (
+            inventory["Drum ID"].astype(str).str.contains(
+                search_text, case=False, na=False
+            )
+            | inventory["Sealer Type"].astype(str).str.contains(
+                search_text, case=False, na=False
+            )
+            | inventory["Location"].astype(str).str.contains(
+                search_text, case=False, na=False
+            )
         )
-        report = report[mask]
+        inventory = inventory[search_mask]
 
     st.dataframe(
-        report,
+        inventory,
         use_container_width=True,
         hide_index=True,
-        column_config={
-            "Stock Level (%)": st.column_config.ProgressColumn(
-                "Stock Level",
-                min_value=0,
-                max_value=100,
-                format="%.1f%%"
-            )
-        }
+    )
+
+    csv_download(
+        inventory,
+        "sealer_inventory.csv",
+        "⬇️ Download Inventory CSV",
     )
 
     st.divider()
-    st.subheader("➕ Receive a New Drum")
 
-    with st.form("receive_drum_form", clear_on_submit=True):
-        c1, c2, c3 = st.columns(3)
+    add_tab, edit_tab, remove_tab = st.tabs(
+        ["➕ Add Drum", "✏️ Edit Drum", "🗑️ Remove Drum"]
+    )
 
-        with c1:
+    with add_tab:
+        st.subheader("Register New Drum")
+
+        with st.form("add_drum_form", clear_on_submit=True):
             new_type = st.selectbox(
-                "Sealer Type", ["Sealer A", "Sealer B", "Sealer C"]
+                "Sealer Type",
+                ["Sealer A", "Sealer B", "Sealer C", "Other"],
             )
             new_capacity = st.number_input(
-                "Drum Capacity (kg)", min_value=1.0, value=200.0
+                "Capacity (kg)",
+                min_value=0.0,
+                value=200.0,
+                step=10.0,
+            )
+            new_remaining = st.number_input(
+                "Initial Remaining Stock (kg)",
+                min_value=0.0,
+                value=200.0,
+                step=5.0,
+            )
+            new_location = st.selectbox(
+                "Storage Location",
+                [
+                    "Storage Zone A",
+                    "Storage Zone B",
+                    "Storage Zone C",
+                    "Production Line",
+                    "Other",
+                ],
             )
 
-        with c2:
-            tare = st.number_input(
-                "Empty Drum Weight (kg)", min_value=0.0, value=10.0
-            )
-            initial = st.number_input(
-                "Initial Sealer Quantity (kg)",
-                min_value=0.0, value=200.0
+            submitted = st.form_submit_button(
+                "➕ Add Drum",
+                type="primary",
             )
 
-        with c3:
-            location = st.text_input("Storage Location", value="A3")
-            receipt_shift = st.selectbox(
-                "Shift", ["A", "B", "C", "General"]
-            )
-
-        receive = st.form_submit_button(
-            "＋ Add Drum to Inventory",
-            type="primary",
-            use_container_width=True
-        )
-
-        if receive:
-            if tare >= new_capacity:
-                st.error("Tare weight must be less than drum capacity.")
-            elif initial > new_capacity:
-                st.error("Initial quantity cannot exceed drum capacity.")
-            elif not location.strip():
-                st.error("Enter a storage location.")
-            else:
-                drum_id = f"DR-{st.session_state.next_id:03d}"
-                st.session_state.next_id += 1
-
-                new_row = pd.DataFrame([{
-                    "Drum ID": drum_id,
-                    "Sealer Type": new_type,
-                    "Capacity (kg)": float(new_capacity),
-                    "Tare Weight (kg)": float(tare),
-                    "Remaining (kg)": float(initial),
-                    "Location": location.strip()
-                }])
-
-                st.session_state.drums = pd.concat(
-                    [st.session_state.drums, new_row],
-                    ignore_index=True
-                )
-                st.session_state.book_stock += float(initial)
-
-                add_transaction(
-                    drum_id, "Drum Received", initial, initial,
-                    receipt_shift, "New drum received"
-                )
-
-                st.success(f"{drum_id} has been added.")
-                st.rerun()
-
-    st.divider()
-    st.subheader("✏️ Edit Drum Details")
-
-    drums = current_drums()
-    if not drums.empty:
-        edit_id = st.selectbox(
-            "Select drum to edit",
-            drums["Drum ID"].tolist(),
-            key="edit_drum_id"
-        )
-        selected = drums[drums["Drum ID"] == edit_id].iloc[0]
-
-        with st.form("edit_drum_form"):
-            e1, e2, e3 = st.columns(3)
-
-            with e1:
-                edit_type = st.selectbox(
-                    "Sealer Type",
-                    ["Sealer A", "Sealer B", "Sealer C"],
-                    index=["Sealer A", "Sealer B", "Sealer C"].index(
-                        selected["Sealer Type"]
+            if submitted:
+                if new_capacity <= 0:
+                    st.error("Capacity must be greater than zero.")
+                elif new_remaining > new_capacity:
+                    st.error(
+                        "Remaining stock cannot exceed drum capacity."
                     )
-                )
-                edit_location = st.text_input(
-                    "Location", value=str(selected["Location"])
-                )
-
-            with e2:
-                edit_capacity = st.number_input(
-                    "Capacity (kg)",
-                    min_value=1.0,
-                    value=float(selected["Capacity (kg)"])
-                )
-                edit_tare = st.number_input(
-                    "Tare Weight (kg)",
-                    min_value=0.0,
-                    value=float(selected["Tare Weight (kg)"])
-                )
-
-            with e3:
-                edit_remaining = st.number_input(
-                    "Simulated Remaining Stock (kg)",
-                    min_value=0.0,
-                    value=float(selected["Remaining (kg)"])
-                )
-                edit_shift = st.selectbox(
-                    "Adjustment Shift",
-                    ["A", "B", "C", "General"]
-                )
-
-            save_edit = st.form_submit_button(
-                "Save Drum Changes",
-                type="primary"
-            )
-
-            if save_edit:
-                if edit_tare >= edit_capacity:
-                    st.error("Tare weight must be below capacity.")
-                elif edit_remaining > edit_capacity:
-                    st.error("Remaining stock cannot exceed capacity.")
-                elif not edit_location.strip():
-                    st.error("Location cannot be empty.")
                 else:
-                    idx = st.session_state.drums.index[
-                        st.session_state.drums["Drum ID"] == edit_id
-                    ][0]
-
-                    old_remaining = float(
-                        st.session_state.drums.at[idx, "Remaining (kg)"]
+                    new_id = (
+                        f"SD-{st.session_state.next_drum_number:03d}"
                     )
-                    delta = float(edit_remaining) - old_remaining
 
-                    st.session_state.drums.loc[idx, [
-                        "Sealer Type", "Location", "Capacity (kg)",
-                        "Tare Weight (kg)", "Remaining (kg)"
-                    ]] = [
-                        edit_type, edit_location.strip(),
-                        float(edit_capacity), float(edit_tare),
-                        float(edit_remaining)
-                    ]
+                    st.session_state.drums.append(
+                        {
+                            "Drum ID": new_id,
+                            "Sealer Type": new_type,
+                            "Capacity (kg)": float(new_capacity),
+                            "Remaining (kg)": float(new_remaining),
+                            "Location": new_location,
+                            "Last Updated": datetime.now(),
+                        }
+                    )
 
-                    if delta != 0:
-                        st.session_state.book_stock += delta
-                        add_transaction(
-                            edit_id, "Stock Adjustment", abs(delta),
-                            edit_remaining, edit_shift,
-                            f"Manual adjustment; change {delta:+.1f} kg"
-                        )
-
-                    st.success(f"{edit_id} updated successfully.")
+                    st.session_state.next_drum_number += 1
+                    st.success(f"Drum {new_id} added successfully.")
                     st.rerun()
 
-    st.divider()
-    st.subheader("🗑️ Remove an Empty Drum")
+    with edit_tab:
+        st.subheader("Update Drum Details")
 
-    empty_ids = st.session_state.drums.loc[
-        st.session_state.drums["Remaining (kg)"] <= 0, "Drum ID"
-    ].tolist()
+        if not st.session_state.drums:
+            st.info("No drums are available to edit.")
+        else:
+            drum_ids = [
+                drum["Drum ID"] for drum in st.session_state.drums
+            ]
 
-    if empty_ids:
-        remove_id = st.selectbox(
-            "Choose empty drum", empty_ids, key="remove_empty_drum"
-        )
-        if st.button("Remove Selected Drum"):
-            st.session_state.drums = st.session_state.drums[
-                st.session_state.drums["Drum ID"] != remove_id
-            ].reset_index(drop=True)
-            st.success(f"{remove_id} removed.")
-            st.rerun()
-    else:
-        st.info("No empty drums are currently available for removal.")
+            selected_edit_id = st.selectbox(
+                "Select Drum",
+                drum_ids,
+                key="edit_drum_id",
+            )
+
+            selected_drum = next(
+                drum for drum in st.session_state.drums
+                if drum["Drum ID"] == selected_edit_id
+            )
+
+            with st.form("edit_drum_form"):
+                edit_type = st.selectbox(
+                    "Sealer Type",
+                    ["Sealer A", "Sealer B", "Sealer C", "Other"],
+                    index=(
+                        ["Sealer A", "Sealer B", "Sealer C", "Other"]
+                        .index(selected_drum["Sealer Type"])
+                        if selected_drum["Sealer Type"]
+                        in ["Sealer A", "Sealer B", "Sealer C", "Other"]
+                        else 3
+                    ),
+                )
+
+                edit_capacity = st.number_input(
+                    "Capacity (kg)",
+                    min_value=0.0,
+                    value=float(selected_drum["Capacity (kg)"]),
+                    step=10.0,
+                )
+
+                edit_remaining = st.number_input(
+                    "Remaining Stock (kg)",
+                    min_value=0.0,
+                    value=float(selected_drum["Remaining (kg)"]),
+                    step=5.0,
+                )
+
+                edit_location = st.selectbox(
+                    "Storage Location",
+                    [
+                        "Storage Zone A",
+                        "Storage Zone B",
+                        "Storage Zone C",
+                        "Production Line",
+                        "Other",
+                    ],
+                    index=(
+                        [
+                            "Storage Zone A",
+                            "Storage Zone B",
+                            "Storage Zone C",
+                            "Production Line",
+                            "Other",
+                        ].index(selected_drum["Location"])
+                        if selected_drum["Location"] in [
+                            "Storage Zone A",
+                            "Storage Zone B",
+                            "Storage Zone C",
+                            "Production Line",
+                            "Other",
+                        ]
+                        else 0
+                    ),
+                )
+
+                save_edit = st.form_submit_button(
+                    "💾 Save Changes",
+                    type="primary",
+                )
+
+                if save_edit:
+                    if edit_capacity <= 0:
+                        st.error("Capacity must be greater than zero.")
+                    elif edit_remaining > edit_capacity:
+                        st.error(
+                            "Remaining stock cannot exceed capacity."
+                        )
+                    else:
+                        selected_drum["Sealer Type"] = edit_type
+                        selected_drum["Capacity (kg)"] = float(
+                            edit_capacity
+                        )
+                        selected_drum["Remaining (kg)"] = float(
+                            edit_remaining
+                        )
+                        selected_drum["Location"] = edit_location
+                        selected_drum["Last Updated"] = datetime.now()
+
+                        st.success("Drum details updated.")
+                        st.rerun()
+
+    with remove_tab:
+        st.subheader("Remove Drum")
+
+        if not st.session_state.drums:
+            st.info("There are no drums to remove.")
+        else:
+            remove_id = st.selectbox(
+                "Select drum to remove",
+                [
+                    drum["Drum ID"]
+                    for drum in st.session_state.drums
+                ],
+                key="remove_drum_id",
+            )
+
+            remove_record = next(
+                drum for drum in st.session_state.drums
+                if drum["Drum ID"] == remove_id
+            )
+
+            st.write(
+                f"Current stock: **{remove_record['Remaining (kg)']:.1f} kg**"
+            )
+
+            confirm_remove = st.checkbox(
+                "I confirm that I want to remove this drum."
+            )
+
+            if st.button(
+                "🗑️ Remove Selected Drum",
+                type="primary",
+            ):
+                if not confirm_remove:
+                    st.warning("Please confirm the removal first.")
+                elif remove_record["Remaining (kg)"] > 0:
+                    st.error(
+                        "Only empty drums can be removed. "
+                        "Record consumption or update the stock first."
+                    )
+                else:
+                    st.session_state.drums = [
+                        drum for drum in st.session_state.drums
+                        if drum["Drum ID"] != remove_id
+                    ]
+                    st.success(f"Drum {remove_id} removed.")
+                    st.rerun()
 
 # =========================================================
 # CONSUMPTION
 # =========================================================
 elif page == "Consumption":
-    st.markdown('<div class="section-label">Material Usage</div>',
-                unsafe_allow_html=True)
-    st.title("📉 Consumption Monitoring")
-    st.caption("Record sealer usage and analyse consumption by drum and shift.")
+    section_heading(
+        "🧴 Record Sealer Consumption",
+        "Record material usage by drum and shift.",
+    )
 
-    drums = current_drums()
+    available_drums = [
+        drum for drum in st.session_state.drums
+        if drum["Remaining (kg)"] > 0
+    ]
 
-    if drums.empty:
-        st.info("Add a drum before recording consumption.")
+    if not available_drums:
+        st.warning("No drums have available stock.")
     else:
-        st.subheader("Record Consumption")
-
         with st.form("consumption_form"):
-            c1, c2, c3 = st.columns(3)
-
-            with c1:
-                drum_id = st.selectbox(
-                    "Select Drum", drums["Drum ID"].tolist()
-                )
-                shift = st.selectbox("Production Shift", ["A", "B", "C"])
-
-            with c2:
-                quick_amount = st.radio(
-                    "Quick Quantity (kg)",
-                    [1, 5, 10, 20],
-                    horizontal=True
-                )
-                custom_amount = st.number_input(
-                    "Or enter custom quantity (kg)",
-                    min_value=0.0,
-                    value=0.0,
-                    step=0.5
-                )
-
-            with c3:
-                consumption_note = st.text_input(
-                    "Production / operator note",
-                    placeholder="Optional note"
-                )
-                st.write("")
-                st.caption("Consumption is simulated.")
-
-            consume = st.form_submit_button(
-                "− Record Consumption",
-                type="primary",
-                use_container_width=True
+            selected_id = st.selectbox(
+                "Select Drum",
+                [drum["Drum ID"] for drum in available_drums],
             )
 
-            if consume:
-                amount = (
-                    float(custom_amount)
-                    if custom_amount > 0
-                    else float(quick_amount)
+            selected = next(
+                drum for drum in available_drums
+                if drum["Drum ID"] == selected_id
+            )
+
+            st.info(
+                f"Sealer: {selected['Sealer Type']} · "
+                f"Available stock: {selected['Remaining (kg)']:.1f} kg"
+            )
+
+            quick_amount = st.radio(
+                "Quick quantity",
+                ["5 kg", "10 kg", "20 kg", "Custom"],
+                horizontal=True,
+            )
+
+            if quick_amount == "Custom":
+                amount = st.number_input(
+                    "Quantity used (kg)",
+                    min_value=0.1,
+                    max_value=float(selected["Remaining (kg)"]),
+                    value=min(
+                        5.0, float(selected["Remaining (kg)"])
+                    ),
+                    step=0.5,
+                )
+            else:
+                amount = float(quick_amount.replace(" kg", ""))
+
+            shift = st.selectbox(
+                "Shift",
+                ["A", "B", "C"],
+            )
+
+            notes = st.text_area(
+                "Notes (optional)",
+                placeholder="Example: Production line usage",
+            )
+
+            submit_consumption = st.form_submit_button(
+                "✅ Record Consumption",
+                type="primary",
+            )
+
+            if submit_consumption:
+                success = record_transaction(
+                    selected_id,
+                    amount,
+                    shift,
+                    notes,
                 )
 
-                idx = st.session_state.drums.index[
-                    st.session_state.drums["Drum ID"] == drum_id
-                ][0]
-
-                remaining = float(
-                    st.session_state.drums.at[idx, "Remaining (kg)"]
-                )
-
-                if amount <= 0:
-                    st.error("Consumption must be greater than zero.")
-                elif amount > remaining:
-                    st.error(
-                        f"Insufficient material. Only {remaining:.1f} kg remains."
-                    )
-                else:
-                    updated = round(remaining - amount, 2)
-                    st.session_state.drums.at[
-                        idx, "Remaining (kg)"
-                    ] = updated
-
-                    st.session_state.book_stock = max(
-                        0.0,
-                        st.session_state.book_stock - amount
-                    )
-
-                    add_transaction(
-                        drum_id, "Consumption", amount, updated,
-                        shift, consumption_note
-                    )
-
+                if success:
                     st.success(
-                        f"{amount:.1f} kg recorded against {drum_id}."
+                        f"{amount:.1f} kg consumption recorded for {selected_id}."
                     )
                     st.rerun()
 
     st.divider()
-    tx = pd.DataFrame(st.session_state.transactions)
+    section_heading("📈 Consumption Analytics")
 
-    if not tx.empty:
-        usage = tx[tx["Transaction"] == "Consumption"].copy()
+    tx = transactions_df()
 
-        if not usage.empty:
-            usage["Date"] = pd.to_datetime(
-                usage["Timestamp"], errors="coerce"
-            ).dt.date
-
-            total_usage = float(usage["Quantity (kg)"].sum())
-            tx_count = len(usage)
-            average_usage = total_usage / tx_count if tx_count else 0
-
-            a, b, c = st.columns(3)
-            a.metric("Total Recorded Consumption", f"{total_usage:.1f} kg")
-            b.metric("Consumption Transactions", str(tx_count))
-            c.metric("Average per Transaction", f"{average_usage:.1f} kg")
-
-            left, right = st.columns(2)
-
-            with left:
-                st.subheader("Consumption by Drum")
-                by_drum = usage.groupby("Drum ID", as_index=False)[
-                    "Quantity (kg)"
-                ].sum()
-
-                fig = px.bar(
-                    by_drum,
-                    x="Drum ID",
-                    y="Quantity (kg)",
-                    color_discrete_sequence=["#087F8C"],
-                    text_auto=".1f"
-                )
-                fig.update_layout(showlegend=False)
-                st.plotly_chart(
-                    styled_chart(fig), use_container_width=True
-                )
-
-            with right:
-                st.subheader("Consumption by Shift")
-                by_shift = usage.groupby("Shift", as_index=False)[
-                    "Quantity (kg)"
-                ].sum()
-
-                fig = px.pie(
-                    by_shift,
-                    names="Shift",
-                    values="Quantity (kg)",
-                    hole=0.55,
-                    color_discrete_sequence=[
-                        "#087F8C", "#25B7A5", "#F0AE4E", "#6D8EA5"
-                    ]
-                )
-                st.plotly_chart(
-                    styled_chart(fig), use_container_width=True
-                )
-
-            st.subheader("Consumption Records")
-            st.dataframe(
-                usage.sort_values("Timestamp", ascending=False),
-                use_container_width=True,
-                hide_index=True
-            )
-        else:
-            st.info("No consumption records yet. Record usage above.")
+    if tx.empty:
+        st.info("No consumption records are available yet.")
     else:
-        st.info("No transaction data is available yet.")
+        tx["Timestamp"] = pd.to_datetime(
+            tx["Timestamp"], errors="coerce"
+        )
 
-    st.caption(
-        "Reports use the transactions recorded in this app. "
-        "Automatic production-cycle or sensor-based consumption is not connected."
-    )
+        c1, c2 = st.columns(2)
+
+        with c1:
+            consumption_by_drum = (
+                tx.groupby("Drum ID", as_index=False)
+                ["Quantity Used (kg)"]
+                .sum()
+            )
+
+            chart = px.bar(
+                consumption_by_drum,
+                x="Drum ID",
+                y="Quantity Used (kg)",
+                title="Consumption by Drum",
+                template="plotly_white",
+            )
+            st.plotly_chart(chart, use_container_width=True)
+
+        with c2:
+            consumption_by_shift = (
+                tx.groupby("Shift", as_index=False)
+                ["Quantity Used (kg)"]
+                .sum()
+            )
+
+            chart = px.pie(
+                consumption_by_shift,
+                names="Shift",
+                values="Quantity Used (kg)",
+                title="Consumption by Shift",
+                hole=0.4,
+                template="plotly_white",
+            )
+            st.plotly_chart(chart, use_container_width=True)
 
 # =========================================================
 # TRANSACTION HISTORY
 # =========================================================
 elif page == "Transactions":
-    st.markdown('<div class="section-label">Audit Trail</div>',
-                unsafe_allow_html=True)
-    st.title("🧾 Transaction History")
-    st.caption("Review stock receipts, consumption and inventory adjustments.")
+    section_heading(
+        "🧾 Transaction History",
+        "Review and export recorded consumption transactions.",
+    )
 
-    tx = pd.DataFrame(st.session_state.transactions)
+    tx = transactions_df()
 
     if tx.empty:
-        st.info("No transactions have been recorded yet.")
+        st.info("No transactions have been recorded.")
     else:
-        t1, t2, t3 = st.columns(3)
+        filter_col1, filter_col2 = st.columns(2)
 
-        t1.metric("Total Transactions", len(tx))
-        t2.metric(
-            "Material Received",
-            f"{tx.loc[tx['Transaction'] == 'Drum Received', 'Quantity (kg)'].sum():.1f} kg"
-        )
-        t3.metric(
-            "Material Consumed",
-            f"{tx.loc[tx['Transaction'] == 'Consumption', 'Quantity (kg)'].sum():.1f} kg"
-        )
+        with filter_col1:
+            all_drum_ids = ["All"] + sorted(
+                tx["Drum ID"].dropna().unique().tolist()
+            )
+            drum_filter = st.selectbox(
+                "Filter by Drum",
+                all_drum_ids,
+            )
 
-        filter_type = st.selectbox(
-            "Filter by transaction",
-            ["All", "Drum Received", "Consumption", "Stock Adjustment"]
-        )
+        with filter_col2:
+            shift_filter = st.selectbox(
+                "Filter by Shift",
+                ["All", "A", "B", "C"],
+            )
 
-        filtered = tx.copy()
-        if filter_type != "All":
-            filtered = filtered[
-                filtered["Transaction"] == filter_type
+        filtered_tx = tx.copy()
+
+        if drum_filter != "All":
+            filtered_tx = filtered_tx[
+                filtered_tx["Drum ID"] == drum_filter
+            ]
+
+        if shift_filter != "All":
+            filtered_tx = filtered_tx[
+                filtered_tx["Shift"] == shift_filter
             ]
 
         st.dataframe(
-            filtered.sort_values("Timestamp", ascending=False),
+            filtered_tx.sort_values(
+                "Timestamp", ascending=False
+            ),
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
         )
 
-        st.download_button(
-            "⬇️ Export Transactions CSV",
-            data=make_csv(filtered),
-            file_name="sealer_transactions.csv",
-            mime="text/csv"
+        csv_download(
+            filtered_tx,
+            "sealer_transactions.csv",
+            "⬇️ Download Transactions CSV",
+        )
+
+        total_filtered = filtered_tx["Quantity Used (kg)"].sum()
+        st.metric(
+            "Filtered Consumption",
+            f"{total_filtered:,.1f} kg",
         )
 
 # =========================================================
 # REPORTS
 # =========================================================
 elif page == "Reports":
-    st.markdown('<div class="section-label">Analytics & Exports</div>',
-                unsafe_allow_html=True)
-    st.title("📑 Inventory Reports")
+    section_heading(
+        "📑 Inventory & Consumption Reports",
+        "Export current stock levels and consumption data.",
+    )
 
     report = get_stock_report()
-    physical = float(report["Remaining (kg)"].sum())
-    book = float(st.session_state.book_stock)
-    variance = physical - book
+    tx = transactions_df()
 
-    a, b, c = st.columns(3)
-    a.metric("Physical Inventory", f"{physical:.1f} kg")
-    b.metric("Simulated Book Inventory", f"{book:.1f} kg")
-    c.metric("Physical / Book Variance", f"{variance:+.1f} kg")
+    st.subheader("Inventory Summary")
 
-    st.subheader("Complete Inventory Report")
+    summary1, summary2, summary3 = st.columns(3)
+    summary1.metric(
+        "Total Capacity",
+        f"{report['Capacity (kg)'].sum():,.1f} kg",
+    )
+    summary2.metric(
+        "Remaining Stock",
+        f"{report['Remaining (kg)'].sum():,.1f} kg",
+    )
+    summary3.metric(
+        "Utilized Capacity",
+        f"{(
+            (report['Capacity (kg)'].sum()
+             - report['Remaining (kg)'].sum())
+            / report['Capacity (kg)'].sum() * 100
+            if report['Capacity (kg)'].sum() > 0
+            else 0
+        ):,.1f}%",
+    )
+
     st.dataframe(
         report,
         use_container_width=True,
         hide_index=True,
-        column_config={
-            "Stock Level (%)": st.column_config.ProgressColumn(
-                "Stock Level",
-                min_value=0,
-                max_value=100,
-                format="%.1f%%"
-            )
-        }
     )
 
-    st.download_button(
-        "⬇️ Download Inventory CSV",
-        data=make_csv(report),
-        file_name="sealer_inventory_report.csv",
-        mime="text/csv"
+    csv_download(
+        report,
+        "sealer_stock_report.csv",
+        "⬇️ Download Stock Report",
     )
 
     st.divider()
-    st.subheader("📊 Inventory by Sealer Type")
+    st.subheader("Consumption Report")
 
-    by_type = report.groupby("Sealer Type", as_index=False)[
-        "Remaining (kg)"
-    ].sum()
-
-    fig = px.bar(
-        by_type,
-        x="Sealer Type",
-        y="Remaining (kg)",
-        color="Sealer Type",
-        text_auto=".1f",
-        color_discrete_sequence=["#087F8C", "#22A699", "#F0AE4E"]
-    )
-    fig.update_layout(showlegend=False)
-    st.plotly_chart(styled_chart(fig), use_container_width=True)
-
-    st.subheader("📆 Consumption Date Filter")
-
-    tx = pd.DataFrame(st.session_state.transactions)
-
-    if not tx.empty:
-        tx["Parsed Date"] = pd.to_datetime(
+    if tx.empty:
+        st.info("No consumption data is available to report.")
+    else:
+        tx["Timestamp"] = pd.to_datetime(
             tx["Timestamp"], errors="coerce"
-        ).dt.date
+        )
 
-        consumption = tx[tx["Transaction"] == "Consumption"].copy()
+        min_date = tx["Timestamp"].min().date()
+        max_date = tx["Timestamp"].max().date()
 
-        if not consumption.empty:
-            min_date = min(consumption["Parsed Date"].dropna())
-            max_date = max(consumption["Parsed Date"].dropna())
+        date_col1, date_col2 = st.columns(2)
 
-            start_date, end_date = st.date_input(
-                "Select date range",
-                value=(min_date, max_date),
-                min_value=min_date,
-                max_value=max_date
-            ) if min_date != max_date else (
-                st.date_input("Select date", value=max_date),
-                max_date
+        with date_col1:
+            start_date = st.date_input(
+                "Start date",
+                value=min_date,
+                key="report_start_date",
             )
 
-            filtered_usage = consumption[
-                (consumption["Parsed Date"] >= start_date)
-                & (consumption["Parsed Date"] <= end_date)
-            ]
-
-            total_period = float(
-                filtered_usage["Quantity (kg)"].sum()
+        with date_col2:
+            end_date = st.date_input(
+                "End date",
+                value=max_date,
+                key="report_end_date",
             )
+
+        if start_date > end_date:
+            st.error("Start date must be on or before end date.")
+        else:
+            filtered_report = tx[
+                (tx["Timestamp"].dt.date >= start_date)
+                & (tx["Timestamp"].dt.date <= end_date)
+            ].copy()
 
             st.metric(
                 "Consumption in Selected Period",
-                f"{total_period:.1f} kg"
+                f"{filtered_report['Quantity Used (kg)'].sum():,.1f} kg",
             )
 
             st.dataframe(
-                filtered_usage.drop(columns=["Parsed Date"]),
+                filtered_report.sort_values(
+                    "Timestamp", ascending=False
+                ),
                 use_container_width=True,
-                hide_index=True
+                hide_index=True,
             )
 
-            st.download_button(
-                "⬇️ Download Period Consumption CSV",
-                data=make_csv(
-                    filtered_usage.drop(columns=["Parsed Date"])
-                ),
-                file_name="sealer_period_consumption.csv",
-                mime="text/csv"
+            csv_download(
+                filtered_report,
+                "sealer_consumption_report.csv",
+                "⬇️ Download Consumption Report",
             )
-        else:
-            st.info("No consumption records are available for filtering.")
-    else:
-        st.info("Add inventory transactions to generate reports.")
 
 # =========================================================
 # FOOTER
 # =========================================================
 st.divider()
-
-st.markdown(
-    """
-    <div style="text-align:center;padding:8px;color:#64748B;font-size:11px;">
-        <b>SEALER IQ</b> &nbsp; | &nbsp;
-        DIGITAL SEALER INVENTORY MONITORING SYSTEM<br>
-        Automotive Body Shop Prototype • Simulation Mode • No live hardware/SAP
-    </div>
-    """,
-    unsafe_allow_html=True
+st.caption(
+    "Digital Sealer Inventory Monitoring System · "
+    "Industrial IoT Demo · Simulated load-cell and SAP values"
 )
+
 
