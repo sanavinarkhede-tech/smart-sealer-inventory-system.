@@ -79,6 +79,22 @@ st.markdown(
         background-color: #087f8c;
         border-color: #087f8c;
     }
+
+    /* Fix number input text color in the sidebar */
+[data-testid="stSidebar"] input {
+    color: #172b4d !important;
+    background-color: #ffffff !important;
+    -webkit-text-fill-color: #172b4d !important;
+}
+
+[data-testid="stSidebar"] [data-baseweb="input"] {
+    background-color: #ffffff !important;
+}
+
+[data-testid="stSidebar"] [data-baseweb="input"] input {
+    color: #172b4d !important;
+    -webkit-text-fill-color: #172b4d !important;
+}
     </style>
     """,
     unsafe_allow_html=True,
