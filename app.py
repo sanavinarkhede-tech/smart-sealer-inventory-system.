@@ -1,107 +1,38 @@
-from flask import Flask, jsonify, render_template_string
+import streamlit as st
+import pandas as pd
 
-app = Flask(__name__)
+# Page Configuration
+st.set_page_config(page_title="Sealer Drum Flow - Digital Twin", layout="wide")
 
 # Simulated Sealer Drum Database (Steps 6 & 7: Inventory & FEFO)
-drum_database = [
-    {"drum_id": "D001", "lot_no": "L123", "expiry_date": "12-2026", "qty": "200 L", "status": "In Storage"},
-    {"drum_id": "D002", "lot_no": "L124", "expiry_date": "01-2027", "qty": "200 L", "status": "Next (FEFO)"},
-    {"drum_id": "D003", "lot_no": "L125", "expiry_date": "03-2027", "qty": "200 L", "status": "In Storage"}
+drum_data = [
+    {"Drum ID": "D001", "Lot No.": "L123", "Expiry Date": "12-2026", "Quantity": "200 L", "Status": "In Storage"},
+    {"Drum ID": "D002", "Lot No.": "L124", "Expiry Date": "01-2027", "Quantity": "200 L", "Status": "Next (FEFO)"},
+    {"Drum ID": "D003", "Lot No.": "L125", "Expiry Date": "03-2027", "Quantity": "200 L", "Status": "In Storage"}
 ]
+df = pd.DataFrame(drum_data)
 
-# HTML Template embedded directly for a single-file deployment
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Sealer Drum Flow - Digital Twin Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.js"></script>
-</head>
-<body class="bg-gray-100 font-sans">
-    <div class="container mx-auto p-6">
-        <!-- Header -->
-        <header class="bg-blue-900 text-white p-4 rounded-lg shadow-md mb-6 flex justify-between items-center">
-            <div>
-                <h1 class="text-2xl font-bold">Sealer Drum Flow & Storage Area</h1>
-                <p class="text-sm text-blue-200">Plant Process & Digital Twin Simulation (Arrival to Line Issue)</p>
-            </div>
-            <span class="bg-green-500 px-3 py-1 rounded text-sm font-semibold">Python/Flask Active</span>
-        </header>
+# Header
+st.title("Sealer Drum Flow & Storage Area")
+st.markdown("**Plant Process & Digital Twin Simulation (Arrival to Line Issue)**")
+st.success("Streamlit Cloud Deployment Active")
 
-        <!-- Metrics Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div class="bg-white p-4 rounded-lg shadow">
-                <h3 class="text-gray-500 text-sm">Active Drums in Storage</h3>
-                <p id="metric-storage" class="text-3xl font-bold text-blue-900">3</p>
-            </div>
-            <div class="bg-white p-4 rounded-lg shadow">
-                <h3 class="text-gray-500 text-sm">Active Line Consumption</h3>
-                <p id="metric-consumption" class="text-3xl font-bold text-green-600">182 L</p>
-            </div>
-            <div class="bg-white p-4 rounded-lg shadow">
-                <h3 class="text-gray-500 text-sm">Active Logic Rule</h3>
-                <p class="text-lg font-semibold text-purple-700">FEFO (First Expiring First Out)</p>
-            </div>
-            <div class="bg-white p-4 rounded-lg shadow">
-                <h3 class="text-gray-500 text-sm">System Alerts</h3>
-                <p class="text-xl font-bold text-green-600">None</p>
-            </div>
-        </div>
+# Metrics Grid
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Active Drums in Storage", "3")
+col2.metric("Active Line Consumption", "182 L")
+col3.metric("Active Logic Rule", "FEFO")
+col4.metric("System Alerts", "None")
 
-        <!-- Inventory Table (Step 6 & 7) -->
-        <div class="bg-white p-6 rounded-lg shadow mb-6">
-            <h2 class="text-lg font-bold mb-4 text-gray-800">Inventory Monitoring & FIFO/FEFO Queue</h2>
-            <table class="w-full text-left border-collapse">
-                <thead>
-                    <tr class="bg-gray-200 text-gray-700">
-                        <th class="p-2">Drum ID</th>
-                        <th class="p-2">Lot No.</th>
-                        <th class="p-2">Expiry Date</th>
-                        <th class="p-2">Quantity</th>
-                        <th class="p-2">Status</th>
-                    </tr>
-                </thead>
-                <tbody id="inventory-table">
-                    {% for drum in drums %}
-                    <tr class="border-b">
-                        <td class="p-2 font-medium">{{ drum.drum_id }}</td>
-                        <td class="p-2">{{ drum.lot_no }}</td>
-                        <td class="p-2">{{ drum.expiry_date }}</td>
-                        <td class="p-2">{{ drum.qty }}</td>
-                        <td class="p-2 font-semibold {% if 'Next' in drum.status %}text-purple-600{% else %}text-blue-600{% endif %}">
-                            {{ drum.status }}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+st.markdown("---")
 
-        <!-- Process Flow Reference Steps -->
-        <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg">
-            <h3 class="font-bold text-blue-900 mb-1">Process Overview</h3>
-            <p class="text-sm text-blue-800">
-                Covers all stages from Plant Arrival (Step 1) -> Quality Check & SAP GRN (Steps 2-3) -> Storage & Tagging (Steps 4-5) -> Real-time Monitoring & FEFO Issue (Steps 6-8) -> Line-Side Consumption via Load Cells (Step 9) to Empty Return (Steps 10-11).
-            </p>
-        </div>
-    </div>
-</body>
-</html>
-"""
+# Inventory Table
+st.subheader("Inventory Monitoring & FIFO/FEFO Queue")
+st.dataframe(df, use_container_width=True)
 
-@app.route("/")
-def index():
-    return render_template_string(HTML_TEMPLATE, drums=drum_database)
-
-@app.route("/api/status")
-def api_status():
-    return jsonify({
-        "status": "online",
-        "inventory": drum_database,
-        "active_rule": "FEFO",
-        "alerts": 0
-    })
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+# Process Overview
+st.info(
+    "Process Overview: Covers all stages from Plant Arrival (Step 1) -> Quality Check & SAP GRN (Steps 2-3) "
+    "-> Storage & Tagging (Steps 4-5) -> Real-time Monitoring & FEFO Issue (Steps 6-8) "
+    "-> Line-Side Consumption via Load Cells (Step 9) to Empty Return (Steps 10-11)."
+)
