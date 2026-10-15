@@ -1,224 +1,228 @@
-import time
-from datetime import datetime
+import random
+from datetime import datetime, timedelta
 
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="Sealer Drum Flow – Plant Simulation", page_icon="🛢️", layout="wide")
+st.set_page_config(page_title="Sealer Drum Digital Twin", page_icon="🛢️", layout="wide")
 
-# ----------------------------- DATA -----------------------------
-STEPS = [
-    ("Arrival at Plant", "🚚", "Sealer drums arrive from supplier",
-     ["GRN (Goods Receipt Note) created in SAP", "Delivery challan & PO checked"], "GRN created in SAP"),
-    ("Unloading & Initial Check", "📦", "Forklift / pallet truck unloading",
-     ["Visual inspection (damage, leakage, seal)", "Barcode scanned to capture Drum ID / Lot No."], "Barcode scanned – Drum ID & Lot captured"),
-    ("Quality Check", "📋", "Verify lot, manufacture date & expiry",
-     ["Check quantity as per PO", "Update GRN and quality status in SAP"], "Quality status = OK in SAP"),
-    ("Move to Storage Area", "🏭", "Transport drums to sealer storage area",
-     ["Use forklift / pallet truck", "Follow safety guidelines"], "Drums moved to storage area"),
-    ("Storage & Tagging", "🏷️", "Place drums in rack / floor location",
-     ["Update location in SAP", "Attach tag (Drum ID, Lot No, Expiry Date)"], "Location & tag updated"),
-    ("Inventory Monitoring", "🖥️", "Real-time stock tracking",
-     ["Monitor expiry date and quantity", "System alerts for low stock / near expiry"], "Stock live – no alerts"),
-    ("FIFO / FEFO", "🔄", "Oldest / earliest-expiry drum goes first",
-     ["Ensure correct drum is issued first", "Avoid expiry and quality risk"], "FEFO selects earliest-expiry drum"),
-    ("Ready for Line Issue", "✅", "Drum brought from storage",
-     ["Barcode scanned and weighed (load cell)", "Issue recorded in SAP / system"], "Issue posted in SAP"),
-    ("Line Side Consumption", "📈", "Drum placed on weighing platform",
-     ["Consumption = previous weight − current weight", "Data sent to PLC/IoT and shown on BI screen"], "Consumption streaming to BI"),
-    ("Drum Empty / Return", "♻️", "Empty drum returned to storage",
-     ["Marked as empty and scanned", "Records updated in SAP"], "Drum marked EMPTY in SAP"),
-    ("Cycle Continues", "🔁", "Next drum issued as per FIFO/FEFO",
-     ["Continuous monitoring", "No stock-out and no expiry"], "Cycle restarts with next drum"),
-]
-N = len(STEPS)
-DRUM_L = 200
-SUB_TICKS = 4  # consumption ticks during step 9
+DRUM, TICK_H = 200, 4          # litres per drum, simulated hours per tick
+START = datetime(2026, 10, 15, 8, 0)
 
+# ============================ SIMULATION ENGINE ============================
+def new_drum(S, loc, exp=None):
+    S["n"] += 1
+    day = S["t"] / 24
+    return dict(id=f"D{S['n']:03d}", lot=f"L{100 + S['n']}", loc=loc, q=DRUM,
+                exp=exp if exp is not None else day + S["rng"].randint(8, 30))
 
-def init():
-    ss = st.session_state
-    ss.step = -1
-    ss.sub = 0
-    ss.playing = False
-    ss.cur = 0
-    ss.recv = 0
-    ss.done = 0
-    ss.log = []
-    ss.inv = [
-        {"Drum ID": "D001", "Lot No.": "L123", "Expiry Date": "12-2026", "Qty (L)": DRUM_L, "Status": "In Stock"},
-        {"Drum ID": "D002", "Lot No.": "L124", "Expiry Date": "01-2027", "Qty (L)": DRUM_L, "Status": "In Stock"},
-        {"Drum ID": "D003", "Lot No.": "L125", "Expiry Date": "03-2027", "Qty (L)": DRUM_L, "Status": "In Stock"},
-    ]
+def new_state(seed=7):
+    S = dict(t=0, n=0, rng=random.Random(seed), drums=[], line=None, log=[], hist=[],
+             consumed_l=0, drums_done=0, wasted_l=0, wasted_n=0, stockouts=0, received=0)
+    for _ in range(8):
+        S["drums"].append(new_drum(S, "Storage"))
+    return S
 
+def log(S, msg, kind="ok"):
+    S["log"].insert(0, (START + timedelta(hours=S["t"]), kind, msg))
 
-if "step" not in st.session_state:
-    init()
+def step(S, policy, rate, every, batch):
+    S["t"] += TICK_H
+    day = S["t"] / 24
+    # 1) Receiving -> QC -> Storage pipeline
+    for d in S["drums"]:
+        if d["loc"] == "QC":
+            d["loc"] = "Storage"; log(S, f"{d['id']} tagged & stored in SAP (Lot {d['lot']})")
+        elif d["loc"] == "Receiving":
+            d["loc"] = "QC"; log(S, f"{d['id']} barcode scanned, quality check started", "info")
+    # 2) Truck arrival
+    if S["t"] % (every * 24) == 0:
+        for _ in range(batch):
+            S["drums"].append(new_drum(S, "Receiving")); S["received"] += 1
+        log(S, f"🚚 Truck arrived: {batch} drums, GRN created in SAP", "info")
+    # 3) Expiry
+    for d in list(S["drums"]):
+        if d["loc"] == "Storage" and d["exp"] < day:
+            S["drums"].remove(d); S["wasted_l"] += d["q"]; S["wasted_n"] += 1
+            log(S, f"❌ {d['id']} EXPIRED in storage – {d['q']} L wasted", "bad")
+    # 4) Line issue + load-cell consumption
+    if S["line"] is None:
+        stock = [d for d in S["drums"] if d["loc"] == "Storage"]
+        if stock:
+            d = min(stock, key=lambda x: x["exp"]) if policy == "FEFO" else S["rng"].choice(stock)
+            d["loc"] = "Line"; S["line"] = d
+            log(S, f"✅ {d['id']} issued to line ({policy}) – exp in {d['exp'] - day:.0f} d")
+        else:
+            S["stockouts"] += 1; log(S, "⚠️ STOCK-OUT – line waiting for drum", "bad")
+    d = S["line"]
+    if d:
+        use = min(d["q"], rate * TICK_H); d["q"] -= use; S["consumed_l"] += use
+        if d["q"] <= 0:
+            S["drums"].remove(d); S["drums_done"] += 1; S["line"] = None
+            log(S, f"♻️ {d['id']} empty – scanned & returned, SAP updated", "info")
+    S["hist"].append(dict(t=START + timedelta(hours=S["t"]),
+                          Stock=sum(x["loc"] == "Storage" for x in S["drums"]),
+                          LineWeight=S["line"]["q"] if S["line"] else 0,
+                          Consumed=S["consumed_l"], Wasted=S["wasted_l"]))
+
+def compare(rate, every, batch, days=60):
+    out = []
+    for pol in ("FEFO", "Random (no system)"):
+        S = new_state()
+        for _ in range(days * 24 // TICK_H):
+            step(S, "FEFO" if pol == "FEFO" else "Random", rate, every, batch)
+        out.append(dict(Policy=pol, **{"Waste (L)": S["wasted_l"], "Expired drums": S["wasted_n"],
+                                       "Stock-outs": S["stockouts"], "Consumed (L)": round(S["consumed_l"])}))
+    return pd.DataFrame(out)
+
+# ============================ STATE + SIDEBAR ============================
+if "S" not in st.session_state:
+    st.session_state.S, st.session_state.play = new_state(), False
 ss = st.session_state
 
+with st.sidebar:
+    st.markdown("## ⚙️ Control Room")
+    policy = st.radio("Issue policy", ["FEFO", "Random"], help="FEFO = First Expiry First Out (SAP-driven)")
+    rate = st.slider("Line consumption (L/hour)", 5, 25, 10)
+    every = st.slider("Truck arrives every (days)", 1, 7, 3)
+    batch = st.slider("Drums per truck", 1, 10, 4)
+    speed = st.slider("Refresh (sec / tick)", 0.3, 2.0, 0.8)
+    a, b = st.columns(2)
+    if a.button("⏸ Pause" if ss.play else "▶ Start", type="primary", use_container_width=True):
+        ss.play = not ss.play; st.rerun()
+    if b.button("↺ Reset", use_container_width=True):
+        ss.S, ss.play = new_state(), False; st.rerun()
+    if st.button("⏭ One tick (+4 h)", use_container_width=True):
+        step(ss.S, policy, rate, every, batch); st.rerun()
+    st.caption("1 tick = 4 simulated hours")
 
-def add_log(msg):
-    ss.log.insert(0, f"[{datetime.now():%H:%M:%S}] {msg}")
+# ============================ STYLE ============================
+st.markdown("""<style>
+.stApp{background:radial-gradient(circle at 15% 0,#16367a,#0a1330 55%);}
+.hero{background:linear-gradient(90deg,#0f3d91,#1565c0 50%,#0b8f6a);border-radius:18px;padding:22px 28px;
+      box-shadow:0 10px 40px #0008;margin-bottom:14px}
+.hero h1{margin:0;font-size:2.1rem;color:#fff}.hero p{margin:4px 0 0;color:#cfe3ff}
+.live{float:right;background:#ff3b4e;color:#fff;border-radius:20px;padding:4px 14px;font-weight:700;font-size:13px;
+      animation:bl 1.2s infinite}.paused{background:#6b7a99;animation:none}
+@keyframes bl{50%{opacity:.4}}
+[data-testid=stMetric]{background:#13224a;border:1px solid #25376b;border-radius:14px;padding:12px 16px}
+.plant{display:grid;grid-template-columns:1fr 36px 1fr 36px 1.6fr 36px 1.1fr;gap:6px;align-items:stretch}
+.zone{background:linear-gradient(160deg,#15296a,#0e1c47);border:1px solid #2c4590;border-radius:16px;padding:14px;min-height:230px}
+.zone h4{margin:0 0 4px;color:#fff;font-size:15px}.zone small{color:#9fb0dd}
+.arr{display:grid;place-items:center;color:#4c9bff;font-size:26px;animation:mv 1s infinite}
+@keyframes mv{50%{transform:translateX(5px)}}
+.rack{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.dr{width:30px;height:38px;border-radius:6px/8px;border:2px solid #0d2b66;background:linear-gradient(90deg,#1a4fb0,#4c9bff 45%,#1a4fb0)}
+.g{box-shadow:0 0 8px #27d17f;border-color:#27d17f}.y{box-shadow:0 0 8px #ffb020;border-color:#ffb020}
+.r{box-shadow:0 0 10px #ff5c6c;border-color:#ff5c6c;animation:bl 1s infinite}
+.pulse{animation:pl 1s infinite}@keyframes pl{50%{transform:scale(1.15)}}
+.tank{width:70px;height:120px;border:3px solid #4c9bff;border-radius:12px;position:relative;overflow:hidden;background:#091536}
+.lvl{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(#5aa8ff,#1a4fb0);transition:height .6s}
+.big{font-size:2rem;font-weight:800;color:#7cc0ff}
+.badge{display:inline-block;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700;margin:2px 0}
+.b-ok{background:#27d17f33;color:#7dffc0}.b-bad{background:#ff5c6c33;color:#ff9aa5}.b-info{background:#2f8cff33;color:#9bc8ff}
+.logbox{height:260px;overflow:auto;background:#070f2a;border-radius:12px;padding:10px;font:13px Consolas,monospace}
+.logbox .ok{color:#8ff0b8}.logbox .bad{color:#ff8a98}.logbox .info{color:#8fc3ff}.logbox span{color:#6f82b3}
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.fc{background:#13224a;border:1px solid #2c4590;border-radius:14px;padding:14px}
+.fc b{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#2f8cff;color:#fff;margin-right:8px}
+.fc p{color:#b9c8ee;font-size:13px;margin:6px 0 0}
+</style>""", unsafe_allow_html=True)
 
-
-def advance():
-    """Move the simulation forward by one tick."""
-    if ss.step == 8 and ss.sub < SUB_TICKS:  # consumption sub-ticks
-        ss.sub += 1
-        ss.inv[ss.cur]["Qty (L)"] = DRUM_L - ss.sub * (DRUM_L // SUB_TICKS)
-        add_log(f"Load cell: {ss.inv[ss.cur]['Qty (L)']} L left on {ss.inv[ss.cur]['Drum ID']}")
-        return
-    ss.step = 0 if ss.step >= N - 1 else ss.step + 1
-    ss.sub = 0
-    s = ss.step
-    if s == 0:
-        ss.recv += 1
-    elif s == 6:
-        ss.inv[ss.cur]["Status"] = "FEFO – next"
-    elif s == 7:
-        ss.inv[ss.cur]["Status"] = "Issued"
-    elif s == 8:
-        ss.inv[ss.cur]["Status"] = "On line"
-    elif s == 9:
-        ss.inv[ss.cur].update({"Qty (L)": 0, "Status": "EMPTY"})
-        ss.done += 1
-    elif s == 10:
-        nxt = next((k for k, d in enumerate(ss.inv) if d["Status"] != "EMPTY"), None)
-        if nxt is None:
-            n = len(ss.inv) + 1
-            ss.inv.append({"Drum ID": f"D{n:03d}", "Lot No.": f"L{122 + n}", "Expiry Date": "06-2027",
-                           "Qty (L)": DRUM_L, "Status": "In Stock"})
-            nxt = len(ss.inv) - 1
-        ss.cur = nxt
-    add_log(STEPS[s][4])
-
-
-# ----------------------------- STYLE -----------------------------
-st.markdown("""
-<style>
-.stApp{background:radial-gradient(circle at 20% 0,#14306b,#0b1630 55%);color:#e8eeff}
-h1.t{text-align:center;font-size:2.6rem;background:linear-gradient(90deg,#6db3ff,#27d17f);
-     -webkit-background-clip:text;color:transparent;margin-bottom:0}
-p.sub{text-align:center;color:#9fb0dd;margin-bottom:10px}
-.track{display:flex;gap:6px;overflow-x:auto;padding:8px 2px}
-.nd{flex:1;min-width:84px;text-align:center;font-size:11px;color:#9fb0dd}
-.nd b{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:#233a75;
-      margin:0 auto 6px;color:#fff;font-size:15px}
-.nd.done b{background:#27d17f}.nd.on b{background:#2f8cff;transform:scale(1.3);box-shadow:0 0 0 6px #2f8cff44}
-.nd.on{color:#fff;font-weight:600}
-.card{background:#13224a;border:1px solid #25376b;border-radius:16px;padding:18px;box-shadow:0 8px 30px #0006}
-.card h2{margin:0 0 6px 0;font-size:1.5rem;color:#fff}
-.card li{color:#cfdbff;line-height:1.8}
-.tag{background:#233a75;border-radius:20px;padding:3px 12px;font-size:12px;color:#9fb0dd}
-.tank{width:90px;height:140px;border:3px solid #4c9bff;border-radius:12px;position:relative;overflow:hidden;background:#0a1938}
-.lvl{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(#4c9bff,#1a4fb0);transition:height .5s}
-.big{font-size:2.4rem;font-weight:700;color:#6db3ff}
-.kpi{background:#0f1c40;border-radius:12px;padding:14px;text-align:center}
-.kpi div{font-size:2rem;font-weight:700;color:#27d17f}.kpi small{color:#9fb0dd}
-.res span{display:inline-block;background:#27d17f22;color:#7dffc0;padding:8px 16px;border-radius:20px;
-          font-weight:600;margin:4px}
-.logbox{height:190px;overflow:auto;font-family:Consolas,monospace;font-size:13px;color:#9fe0b8;
-        background:#07102a;border-radius:10px;padding:10px}
-</style>
-""", unsafe_allow_html=True)
-
-st.markdown('<h1 class="t">🛢️ Sealer Drum Flow – Live Plant Simulation</h1>'
-            '<p class="sub">Supplier arrival → storage → FIFO/FEFO → line-side consumption · SAP · Barcode · Load Cell</p>',
+live_badge = '<span class="live">● LIVE</span>' if ss.play else '<span class="live paused">❚❚ PAUSED</span>'
+st.markdown(f'<div class="hero">{live_badge}<h1>🛢️ Sealer Drum Digital Twin</h1>'
+            '<p>Real-time plant simulation · SAP · Barcode · Load Cell · FIFO/FEFO · Expiry-risk analytics</p></div>',
             unsafe_allow_html=True)
 
-# ----------------------------- CONTROLS -----------------------------
-c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 2, 1])
-if c1.button("⏸ Pause" if ss.playing else "▶ Start", use_container_width=True, type="primary"):
-    ss.playing = not ss.playing
-    if ss.playing and ss.step == -1:
-        advance()
-    st.rerun()
-if c2.button("⏭ Next Step", use_container_width=True):
-    ss.playing = False
-    advance()
-    st.rerun()
-if c3.button("↺ Reset", use_container_width=True):
-    init()
-    st.rerun()
-speed = c4.select_slider("Speed", options=["Slow", "Normal", "Fast"], value="Normal")
-delay = {"Slow": 3.0, "Normal": 1.8, "Fast": 0.8}[speed]
-jump = c5.selectbox("Jump to step", ["—"] + [f"{k + 1}. {s[0]}" for k, s in enumerate(STEPS)])
-if jump != "—":
-    target = int(jump.split(".")[0]) - 1
-    if target != ss.step:
-        ss.playing = False
-        ss.step = target - 1
-        advance()
-        st.rerun()
+# ============================ LIVE DASHBOARD ============================
+def drums_html(ds, cls_fn=lambda d: ""):
+    return "".join(f'<div class="dr {cls_fn(d)}" title="{d["id"]} | {d["lot"]}"></div>' for d in ds) or "<small>— empty —</small>"
 
-# ----------------------------- TRACKER -----------------------------
-nodes = "".join(
-    f'<div class="nd {"done" if k < ss.step else "on" if k == ss.step else ""}"><b>{"✓" if k < ss.step else k + 1}</b>{s[0]}</div>'
-    for k, s in enumerate(STEPS))
-st.markdown(f'<div class="card"><div class="track">{nodes}</div></div>', unsafe_allow_html=True)
-st.progress(max(ss.step, 0) / (N - 1))
+@st.fragment(run_every=speed if ss.play else None)
+def dashboard():
+    S = ss.S
+    if ss.play:
+        step(S, policy, rate, every, batch)
+    day = S["t"] / 24
+    now = START + timedelta(hours=S["t"])
+    storage = sorted([d for d in S["drums"] if d["loc"] == "Storage"], key=lambda d: d["exp"])
+    recv = [d for d in S["drums"] if d["loc"] == "Receiving"]
+    qc = [d for d in S["drums"] if d["loc"] == "QC"]
+    near = [d for d in storage if d["exp"] - day < 5]
+    cls = lambda d: "r" if d["exp"] - day < 5 else "y" if d["exp"] - day < 12 else "g"
 
-# ----------------------------- STEP + INVENTORY -----------------------------
-left, right = st.columns([1.2, 1])
-with left:
-    if ss.step < 0:
-        st.markdown('<div class="card"><h2>👋 Press ▶ Start</h2><p style="color:#cfdbff">Watch a sealer drum travel '
-                    'through all 11 stages – from supplier arrival to line-side consumption and the continuing cycle.</p></div>',
-                    unsafe_allow_html=True)
-    else:
-        name, icon, desc, pts, _ = STEPS[ss.step]
-        lis = "".join(f"<li>{p}</li>" for p in pts)
-        st.markdown(f'<div class="card"><span class="tag">Step {ss.step + 1} of {N}</span>'
-                    f'<h2 style="margin-top:10px">{icon} {name}</h2><p style="color:#cfdbff">{desc}</p><ul>{lis}</ul></div>',
-                    unsafe_allow_html=True)
-with right:
-    st.markdown("##### 📊 Inventory Monitor (SAP)")
-    df = pd.DataFrame(ss.inv)
+    st.caption(f"🕒 Plant clock: **{now:%d %b %Y, %H:%M}**  ·  Day {day:.1f}")
+    k = st.columns(6)
+    k[0].metric("Drums in storage", len(storage), "LOW STOCK" if len(storage) < 3 else None, delta_color="inverse")
+    k[1].metric("Drums consumed", S["drums_done"])
+    k[2].metric("Consumption", f"{S['consumed_l']:,.0f} L")
+    k[3].metric("Near-expiry alerts", len(near), delta_color="inverse")
+    k[4].metric("Expiry waste", f"{S['wasted_l']:,.0f} L", f"{S['wasted_n']} drums" if S["wasted_n"] else None, delta_color="inverse")
+    k[5].metric("Stock-outs", S["stockouts"], delta_color="inverse")
 
-    def hl(row):
-        if row["Status"] == "EMPTY":
-            return ["color:#667"] * len(row)
-        if row["Status"] in ("FEFO – next", "Issued", "On line"):
-            return ["background-color:#27d17f33"] * len(row)
-        return [""] * len(row)
+    t1, t2, t3, t4 = st.tabs(["🏭 Live Plant Floor", "📈 Analytics", "📦 Inventory (SAP)", "🧭 Process Flow"])
 
-    st.dataframe(df.style.apply(hl, axis=1), hide_index=True, use_container_width=True)
+    with t1:
+        ln = S["line"]
+        q = ln["q"] if ln else 0
+        st.markdown(f"""<div class="plant">
+        <div class="zone"><h4>🚚 1-2 Receiving</h4><small>GRN · unload · barcode</small><div class="rack">{drums_html(recv)}</div></div>
+        <div class="arr">➜</div>
+        <div class="zone"><h4>📋 3 Quality Check</h4><small>Lot · expiry · qty</small><div class="rack">{drums_html(qc)}</div></div>
+        <div class="arr">➜</div>
+        <div class="zone"><h4>🏷️ 4-7 Sealer Storage</h4><small>FEFO order → <span class="badge b-ok">&gt;12d</span><span class="badge" style="background:#ffb02033;color:#ffd27a">5-12d</span><span class="badge b-bad">&lt;5d</span></small>
+          <div class="rack">{drums_html(storage, cls)}</div></div>
+        <div class="arr">➜</div>
+        <div class="zone"><h4>⚖️ 8-9 Line Side</h4><small>Load cell → PLC/IoT → BI</small>
+          <div style="display:flex;gap:14px;align-items:center;margin-top:10px">
+            <div class="tank"><div class="lvl" style="height:{q / DRUM * 100}%"></div></div>
+            <div><div class="big">{q:.0f} L</div><small>{ln['id'] + ' · ' + ln['lot'] if ln else 'waiting for drum'}</small><br>
+            <span class="badge {'b-ok' if ln else 'b-bad'}">{'STREAMING' if ln else 'STOCK-OUT'}</span></div></div></div>
+        </div>""", unsafe_allow_html=True)
+        st.markdown("##### 🧾 Live SAP / System Events")
+        rows = "".join(f'<div class="{kind}"><span>{ts:%d-%b %H:%M}</span> {m}</div>' for ts, kind, m in S["log"][:40])
+        st.markdown(f'<div class="logbox">{rows}</div>', unsafe_allow_html=True)
 
-# ----------------------------- WEIGHING + LOG -----------------------------
-a, b = st.columns(2)
-with a:
-    st.markdown("##### ⚖️ Line-Side Weighing Platform (Load Cell)")
-    on_scale = ss.step in (7, 8) or (ss.step == 10)
-    qty = ss.inv[ss.cur]["Qty (L)"] if ss.step >= 7 else 0
-    if ss.step == 10:
-        qty = ss.inv[ss.cur]["Qty (L)"]
-    consumed = DRUM_L - qty if ss.step in (8, 9) else 0
-    status = "Streaming to PLC/IoT" if ss.step == 8 else "Idle"
-    st.markdown(
-        f'<div class="card" style="display:flex;gap:20px;align-items:center">'
-        f'<div class="tank"><div class="lvl" style="height:{qty / DRUM_L * 100}%"></div></div>'
-        f'<div><div class="big">{qty} L</div><div style="color:#9fb0dd">Consumed: <b style="color:#fff">{consumed} L</b></div>'
-        f'<div style="color:#9fb0dd;margin-top:6px">Data → PLC/IoT → BI screen</div>'
-        f'<span class="tag">{status}</span></div></div>', unsafe_allow_html=True)
-with b:
-    st.markdown("##### 🧾 System Log")
-    logs = "".join(f"<div>{l}</div>" for l in ss.log[:30])
-    st.markdown(f'<div class="logbox">{logs}</div>', unsafe_allow_html=True)
+    with t2:
+        if S["hist"]:
+            h = pd.DataFrame(S["hist"]).set_index("t")
+            c1, c2 = st.columns(2)
+            c1.markdown("##### 📦 Storage stock level (drums)"); c1.area_chart(h["Stock"], color="#2f8cff")
+            c2.markdown("##### ⚖️ Line-side drum weight (L)"); c2.line_chart(h["LineWeight"], color="#27d17f")
+            c3, c4 = st.columns(2)
+            c3.markdown("##### 🧪 Cumulative consumption (L)"); c3.line_chart(h["Consumed"], color="#6db3ff")
+            c4.markdown("##### 🗑️ Cumulative expiry waste (L)"); c4.line_chart(h["Wasted"], color="#ff5c6c")
+        else:
+            st.info("Press ▶ Start in the sidebar to stream live data.")
+        st.markdown("---")
+        st.markdown("### 💰 Business impact: FEFO system vs. no system (60-day run, same demand)")
+        if st.button("Run 60-day comparison", type="primary"):
+            res = compare(rate, every, batch)
+            r1, r2 = st.columns([1, 1])
+            r1.dataframe(res, hide_index=True, use_container_width=True)
+            r2.bar_chart(res.set_index("Policy")["Waste (L)"], color="#ff5c6c")
+            saved = res.loc[1, "Waste (L)"] - res.loc[0, "Waste (L)"]
+            st.success(f"✅ FEFO with SAP + barcode tracking saves **{saved:,.0f} L** of sealer over 60 days.")
 
-# ----------------------------- KPIs -----------------------------
-total_cons = sum(DRUM_L - d["Qty (L)"] for d in ss.inv)
-k = st.columns(4)
-for col, (val, lab) in zip(k, [(ss.recv, "Drums Received"), (ss.done, "Drums Consumed"),
-                               (f"{total_cons} L", "Total Consumption"), (0, "Expiry Losses")]):
-    col.markdown(f'<div class="kpi"><div>{val}</div><small>{lab}</small></div>', unsafe_allow_html=True)
+    with t3:
+        df = pd.DataFrame([dict(**{"Drum ID": d["id"], "Lot No.": d["lot"], "Location": d["loc"],
+                                   "Days to expiry": round(d["exp"] - day, 1), "Qty (L)": d["q"]})
+                           for d in sorted(S["drums"], key=lambda x: x["exp"])])
+        if df.empty:
+            st.info("No drums in plant.")
+        else:
+            st.dataframe(df, hide_index=True, use_container_width=True, column_config={
+                "Qty (L)": st.column_config.ProgressColumn("Qty (L)", min_value=0, max_value=DRUM, format="%d L"),
+                "Days to expiry": st.column_config.NumberColumn(format="%.1f d")})
 
-st.markdown('<br><div class="card res" style="text-align:center"><h2>✅ Result / Conclusion</h2>'
-            '<span>Accurate tracking</span><span>Real-time visibility</span><span>FIFO / FEFO</span>'
-            '<span>Reduced expiry & waste</span><span>Safe handling</span><span>Efficient consumption</span></div>',
-            unsafe_allow_html=True)
+    with t4:
+        flow = [("🚚", "Arrival", "GRN in SAP"), ("📦", "Unloading", "Visual check + barcode"), ("📋", "Quality Check", "Lot, expiry, qty"),
+                ("🏭", "Move to Storage", "Forklift, safety"), ("🏷️", "Storage & Tagging", "Location + tag"),
+                ("🖥️", "Inventory Monitoring", "Real-time stock & alerts"), ("🔄", "FIFO / FEFO", "Oldest / earliest expiry first"),
+                ("✅", "Ready for Line Issue", "Scan + weigh + SAP issue"), ("📈", "Line Consumption", "Load cell → PLC/IoT → BI"),
+                ("♻️", "Drum Empty / Return", "Scan, mark empty"), ("🔁", "Cycle Continues", "No stock-out, no expiry")]
+        st.markdown('<div class="flow">' + "".join(f'<div class="fc"><b>{i + 1}</b>{ic} <strong>{t}</strong><p>{p}</p></div>'
+                    for i, (ic, t, p) in enumerate(flow)) + "</div>", unsafe_allow_html=True)
+        st.markdown("**Result:** Accurate tracking · Real-time visibility · FIFO/FEFO · Reduced expiry & waste · Safe handling · Efficient consumption")
 
-# ----------------------------- AUTOPLAY LOOP -----------------------------
-if ss.playing:
-    time.sleep(delay)
-    advance()
-    st.rerun()
+dashboard()
