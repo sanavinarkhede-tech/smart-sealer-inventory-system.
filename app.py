@@ -2,11 +2,11 @@ from flask import Flask, jsonify, render_template_string
 
 app = Flask(__name__)
 
-# Simulated Sealer Drum Database (Steps 6 & 7: Inventory & FEFO)[cite: 1]
+# Simulated Sealer Drum Database (Steps 6 & 7: Inventory & FEFO)
 drum_database = [
-    {"drum_id": "D001", "lot_no": "L123", "expiry_date": "12-2026", "qty": "200 L", "status": "In Storage"},[cite: 1]
-    {"drum_id": "D002", "lot_no": "L124", "expiry_date": "01-2027", "qty": "200 L", "status": "Next (FEFO)"},[cite: 1]
-    {"drum_id": "D003", "lot_no": "L125", "expiry_date": "03-2027", "qty": "200 L", "status": "In Storage"}[cite: 1]
+    {"drum_id": "D001", "lot_no": "L123", "expiry_date": "12-2026", "qty": "200 L", "status": "In Storage"},
+    {"drum_id": "D002", "lot_no": "L124", "expiry_date": "01-2027", "qty": "200 L", "status": "Next (FEFO)"},
+    {"drum_id": "D003", "lot_no": "L125", "expiry_date": "03-2027", "qty": "200 L", "status": "In Storage"}
 ]
 
 # HTML Template embedded directly for a single-file deployment
@@ -24,7 +24,7 @@ HTML_TEMPLATE = """
         <header class="bg-blue-900 text-white p-4 rounded-lg shadow-md mb-6 flex justify-between items-center">
             <div>
                 <h1 class="text-2xl font-bold">Sealer Drum Flow & Storage Area</h1>
-                <p class="text-sm text-blue-200">Plant Process & Digital Twin Simulation (Arrival to Line Issue)[cite: 1]</p>
+                <p class="text-sm text-blue-200">Plant Process & Digital Twin Simulation (Arrival to Line Issue)</p>
             </div>
             <span class="bg-green-500 px-3 py-1 rounded text-sm font-semibold">Python/Flask Active</span>
         </header>
@@ -41,17 +41,17 @@ HTML_TEMPLATE = """
             </div>
             <div class="bg-white p-4 rounded-lg shadow">
                 <h3 class="text-gray-500 text-sm">Active Logic Rule</h3>
-                <p class="text-lg font-semibold text-purple-700">FEFO (First Expiring First Out)[cite: 1]</p>
+                <p class="text-lg font-semibold text-purple-700">FEFO (First Expiring First Out)</p>
             </div>
             <div class="bg-white p-4 rounded-lg shadow">
                 <h3 class="text-gray-500 text-sm">System Alerts</h3>
-                <p class="text-xl font-bold text-green-600">None[cite: 1]</p>
+                <p class="text-xl font-bold text-green-600">None</p>
             </div>
         </div>
 
         <!-- Inventory Table (Step 6 & 7) -->
         <div class="bg-white p-6 rounded-lg shadow mb-6">
-            <h2 class="text-lg font-bold mb-4 text-gray-800">Inventory Monitoring & FIFO/FEFO Queue[cite: 1]</h2>
+            <h2 class="text-lg font-bold mb-4 text-gray-800">Inventory Monitoring & FIFO/FEFO Queue</h2>
             <table class="w-full text-left border-collapse">
                 <thead>
                     <tr class="bg-gray-200 text-gray-700">
@@ -82,7 +82,7 @@ HTML_TEMPLATE = """
         <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg">
             <h3 class="font-bold text-blue-900 mb-1">Process Overview</h3>
             <p class="text-sm text-blue-800">
-                Covers all stages from Plant Arrival (Step 1) -> Quality Check & SAP GRN (Steps 2-3) -> Storage & Tagging (Steps 4-5) -> Real-time Monitoring & FEFO Issue (Steps 6-8) -> Line-Side Consumption via Load Cells (Step 9) to Empty Return (Steps 10-11)[cite: 1].
+                Covers all stages from Plant Arrival (Step 1) -> Quality Check & SAP GRN (Steps 2-3) -> Storage & Tagging (Steps 4-5) -> Real-time Monitoring & FEFO Issue (Steps 6-8) -> Line-Side Consumption via Load Cells (Step 9) to Empty Return (Steps 10-11).
             </p>
         </div>
     </div>
@@ -99,8 +99,8 @@ def api_status():
     return jsonify({
         "status": "online",
         "inventory": drum_database,
-        "active_rule": "FEFO",[cite: 1]
-        "alerts": 0[cite: 1]
+        "active_rule": "FEFO",
+        "alerts": 0
     })
 
 if __name__ == "__main__":
